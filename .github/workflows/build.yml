@@ -1,0 +1,40 @@
+name: Build APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unzip project
+        run: unzip -q ChessLens.zip
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@v3
+      - name: Fetch Stockfish (optional)
+        continue-on-error: true
+        working-directory: ChessLens
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p sf && cd sf
+          gh release download --repo official-stockfish/Stockfish --pattern 'stockfish-android-armv8*'
+          for f in *.tar; do [ -e "$f" ] && tar -xf "$f"; done
+          for f in *.zip; do [ -e "$f" ] && unzip -o "$f"; done
+          BIN=$(find . -type f -name 'stockfish*' ! -name '*.tar' ! -name '*.zip' ! -name '*.md' ! -name '*.txt' -size +500k | head -n 1)
+          test -n "$BIN"
+          mkdir -p ../app/src/main/jniLibs/arm64-v8a
+          cp "$BIN" ../app/src/main/jniLibs/arm64-v8a/libstockfish.so
+      - name: Build debug APK
+        working-directory: ChessLens
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ChessLens-apk
+          path: ChessLens/app/build/outputs/apk/debug/app-debug.apk
