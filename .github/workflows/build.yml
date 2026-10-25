@@ -51,3 +51,42 @@ jobs:
         with:
           name: ChessLens-apk
           path: ChessLens/app/build/outputs/apk/debug/app-debug.apk
+  build-pc:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unzip project
+        shell: pwsh
+        run: Expand-Archive -Path ChessLens.zip -DestinationPath . -Force
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Build PC jar
+        shell: pwsh
+        working-directory: ChessLens
+        run: ./gradlew.bat --no-daemon -p pc jar
+      - name: Download Stockfish for Windows (optional)
+        continue-on-error: true
+        shell: pwsh
+        working-directory: ChessLens
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          New-Item -ItemType Directory -Force -Path sfdl | Out-Null
+          gh release download --repo official-stockfish/Stockfish --pattern "stockfish-windows-x86-64-sse41-popcnt.zip" --dir sfdl
+          Expand-Archive -Path sfdl/*.zip -DestinationPath sfdl/x -Force
+          $exe = Get-ChildItem -Path sfdl/x -Recurse -Filter "stockfish*.exe" | Select-Object -First 1
+          Copy-Item $exe.FullName sfdl/stockfish.exe
+          Get-ChildItem sfdl
+      - name: Package Windows app
+        shell: pwsh
+        working-directory: ChessLens
+        run: |
+          jpackage --type app-image --name ChessLens --input pc/build/libs --main-jar chesslens.jar --main-class com.chesslens.pc.MainKt --dest dist --java-options "-Dfile.encoding=UTF-8"
+          if (Test-Path sfdl/stockfish.exe) { Copy-Item sfdl/stockfish.exe dist/ChessLens/stockfish.exe }
+          Compress-Archive -Path dist/ChessLens -DestinationPath ChessLens-Windows.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ChessLens-Windows
+          path: ChessLens/ChessLens-Windows.zip
